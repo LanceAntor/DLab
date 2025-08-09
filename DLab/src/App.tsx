@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import dlabLogo from './assets/dlab.png'
 import { youtubeService, type VideoInfo, type DownloadOptions } from './services/youtube'
 import './App.css'
@@ -11,10 +11,26 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+
+  // Check backend health on component mount
+  useEffect(() => {
+    checkBackendHealth()
+  }, [])
+
+  const checkBackendHealth = async () => {
+    const isHealthy = await youtubeService.checkBackendHealth()
+    setBackendStatus(isHealthy ? 'online' : 'offline')
+  }
 
   const handleGetVideoInfo = async () => {
     if (!url.trim()) {
       setError('Please enter a YouTube URL')
+      return
+    }
+    
+    if (backendStatus === 'offline') {
+      setError('Backend server is not running. Please start the backend server first.')
       return
     }
     
@@ -24,7 +40,18 @@ function App() {
     
     try {
       const info = await youtubeService.getVideoInfo(url)
-      setVideoInfo(info)
+      console.log('Received video info:', info); // Debug log
+      if (info) {
+        setVideoInfo(info)
+        console.log('Available qualities:', info.availableQualities); // Debug log
+        // Set default quality to first available quality (without 'p')
+        if (info.availableQualities.length > 0) {
+          const firstQuality = info.availableQualities[0];
+          const qualityValue = firstQuality.replace('p', '');
+          console.log('Setting default quality to:', qualityValue); // Debug log
+          setSelectedQuality(qualityValue);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to get video information')
     } finally {
@@ -33,9 +60,10 @@ function App() {
   }
 
   const handleDownload = async () => {
-    if (!videoInfo) return
+    if (!videoInfo || !url) return
     
     setIsDownloading(true)
+    setError(null)
     
     try {
       const downloadOptions: DownloadOptions = {
@@ -43,12 +71,16 @@ function App() {
         format: selectedFormat
       }
       
-      const downloadId = await youtubeService.downloadVideo(videoInfo.videoId, downloadOptions)
+      console.log('Download options:', downloadOptions);
+      console.log('URL:', url);
       
-      // In a real app, you would handle the download differently
-      alert(`Download started! Download ID: ${downloadId}`)
+      await youtubeService.downloadVideo(url, downloadOptions)
+      
+      // Show success message
+      alert(`Download started successfully! The file will be saved to your Downloads folder.`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start download')
+      console.error('Download error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to download video')
     } finally {
       setIsDownloading(false)
     }
@@ -75,8 +107,23 @@ function App() {
         </div>
 
         {/* Subtitle */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h2 className="text-2xl text-amber-100 font-light">Download Youtube Videos For Free</h2>
+        </div>
+
+        {/* Backend Status */}
+        <div className="flex justify-center mb-6">
+          <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
+            backendStatus === 'online' 
+              ? 'bg-green-600 text-white' 
+              : backendStatus === 'offline'
+              ? 'bg-red-600 text-white'
+              : 'bg-yellow-600 text-white'
+          }`}>
+            {backendStatus === 'online' && '🟢 Backend Online'}
+            {backendStatus === 'offline' && '🔴 Backend Offline - Start the backend server'}
+            {backendStatus === 'checking' && '🟡 Checking backend...'}
+          </div>
         </div>
 
         {/* Input Section */}
@@ -119,6 +166,12 @@ function App() {
         {videoInfo && (
           <div className="flex justify-center mb-12">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl">
+              {/* Debug Info */}
+              <div className="mb-4 p-2 bg-gray-700 rounded text-xs text-gray-300">
+                <strong>Debug:</strong> Available qualities: {JSON.stringify(videoInfo.availableQualities)} 
+                (Count: {videoInfo.availableQualities.length})
+              </div>
+              
               <div className="flex gap-6 flex-col md:flex-row">
                 {/* Video Thumbnail */}
                 <div className="flex-shrink-0">
@@ -162,6 +215,14 @@ function App() {
                       {isDownloading ? 'Starting...' : 'Download'}
                     </button>
                     
+                    <button
+                      onClick={handleGetVideoInfo}
+                      disabled={isLoading}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors text-sm"
+                    >
+                      Refresh Info
+                    </button>
+                    
                     <select
                       value={selectedFormat}
                       onChange={(e) => setSelectedFormat(e.target.value as 'mp4' | 'mp3')}
@@ -177,11 +238,28 @@ function App() {
                       className="px-3 py-2 bg-gray-600 text-white rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={selectedFormat === 'mp3'}
                     >
-                      {videoInfo.availableQualities.map(quality => (
-                        <option key={quality} value={quality}>{quality}p</option>
-                      ))}
+                      {videoInfo.availableQualities.map(quality => {
+                        const qualityValue = quality.replace('p', '');
+                        console.log(`Rendering quality option: ${quality} -> value: ${qualityValue}`); // Debug log
+                        return (
+                          <option key={quality} value={qualityValue}>{quality}</option>
+                        );
+                      })}
                     </select>
                   </div>
+
+                  {/* Quality Warning */}
+                  {videoInfo.qualityNote && (
+                    <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-600/50 rounded text-yellow-200 text-sm">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        <span className="font-medium">Quality Notice:</span>
+                      </div>
+                      <p className="mt-1">{videoInfo.qualityNote}</p>
+                    </div>
+                  )}
 
                   {/* Reset Button */}
                   <div className="mt-4">

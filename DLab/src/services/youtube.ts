@@ -1,19 +1,23 @@
 // YouTube service for handling video information and downloads
-// Note: This is a mock implementation for demonstration purposes
-// In a real application, you would need a backend service to handle YouTube API calls
+// Updated to work with real backend API
 
 export interface VideoInfo {
   title: string;
   duration: string;
   thumbnail: string;
   videoId: string;
+  author?: string;
+  viewCount?: string;
   availableQualities: string[];
+  qualityNote?: string;
 }
 
 export interface DownloadOptions {
   quality: string;
   format: 'mp4' | 'mp3';
 }
+
+const API_BASE_URL = 'http://localhost:3001/api';
 
 class YouTubeService {
   // Extract video ID from YouTube URL
@@ -29,42 +33,118 @@ class YouTubeService {
     return youtubeRegex.test(url);
   }
 
-  // Mock function to get video information
+  // Get video information from backend
   async getVideoInfo(url: string): Promise<VideoInfo | null> {
     if (!this.isValidYouTubeUrl(url)) {
       throw new Error('Invalid YouTube URL');
     }
 
-    const videoId = this.extractVideoId(url);
-    if (!videoId) {
-      throw new Error('Could not extract video ID');
+    try {
+      const response = await fetch(`${API_BASE_URL}/video-info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch video information');
+      }
+
+      const videoInfo = await response.json();
+      return videoInfo;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Network error while fetching video information');
     }
-
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Mock video information
-    return {
-      title: 'Lo fi Deep Focus Work and Study - 2 Hours of Ambient Music',
-      duration: '2:00:15',
-      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-      videoId,
-      availableQualities: ['360', '480', '720', '1080']
-    };
   }
 
-  // Mock function to initiate download
-  async downloadVideo(videoId: string, options: DownloadOptions): Promise<string> {
-    // In a real implementation, this would call your backend API
-    // which would handle the actual YouTube video download
-    
-    console.log(`Downloading video ${videoId} in ${options.quality}p quality as ${options.format}`);
-    
-    // Simulate download initiation
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Return download URL or ID
-    return `download_${videoId}_${options.quality}p.${options.format}`;
+  // Download video through backend
+  async downloadVideo(url: string, options: DownloadOptions): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url,
+          quality: options.quality,
+          format: options.format
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start download');
+      }
+
+      // Get filename from response headers
+      const contentDisposition = response.headers.get('Content-Disposition');
+      console.log('Content-Disposition header:', contentDisposition);
+      
+      let filename = `download.${options.format}`;
+      
+      if (contentDisposition) {
+        // Try multiple patterns to extract filename
+        let filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1]);
+          console.log('Extracted filename (UTF-8):', filename);
+        } else {
+          filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+          if (filenameMatch) {
+            filename = filenameMatch[1];
+            console.log('Extracted filename (quoted):', filename);
+          } else {
+            filenameMatch = contentDisposition.match(/filename=([^;]+)/);
+            if (filenameMatch) {
+              filename = filenameMatch[1].trim();
+              console.log('Extracted filename (unquoted):', filename);
+            }
+          }
+        }
+      } else {
+        console.log('No Content-Disposition header found');
+      }
+      
+      console.log('Final filename for download:', filename);
+
+      // Create blob and download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      
+      // Create temporary link for download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Download failed');
+    }
+  }
+
+  // Check if backend is available
+  async checkBackendHealth(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`);
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   // Get thumbnail URL
