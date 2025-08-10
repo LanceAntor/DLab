@@ -255,20 +255,21 @@ function App() {
                       <option value="mp3">MP3</option>
                     </select>
                     
-                    <select
-                      value={selectedQuality}
-                      onChange={(e) => setSelectedQuality(e.target.value)}
-                      className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
-                      disabled={selectedFormat === 'mp3'}
-                    >
-                      {videoInfo.availableQualities.map(quality => {
-                        const qualityValue = quality.replace('p', '');
-                        console.log(`Rendering quality option: ${quality} -> value: ${qualityValue}`); 
-                        return (
-                          <option key={quality} value={qualityValue}>{quality}</option>
-                        );
-                      })}
-                    </select>
+                    {selectedFormat === 'mp4' && (
+                      <select
+                        value={selectedQuality}
+                        onChange={(e) => setSelectedQuality(e.target.value)}
+                        className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {videoInfo.availableQualities.map(quality => {
+                          const qualityValue = quality.replace('p', '');
+                          console.log(`Rendering quality option: ${quality} -> value: ${qualityValue}`); 
+                          return (
+                            <option key={quality} value={qualityValue}>{quality}</option>
+                          );
+                        })}
+                      </select>
+                    )}
                   </div>
 
                   {/* Quality Warning */}
