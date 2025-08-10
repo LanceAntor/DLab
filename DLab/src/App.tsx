@@ -189,11 +189,11 @@ function App() {
         {videoInfo && (
           <div className="flex justify-center mb-12">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl">
-              {/* Debug Info */}
+              {/* Debug Info
               <div className="mb-4 p-2 bg-gray-700 rounded text-xs text-gray-300">
                 <strong>Debug:</strong> Available qualities: {JSON.stringify(videoInfo.availableQualities)} 
                 (Count: {videoInfo.availableQualities.length})
-              </div>
+              </div> */}
               
               <div className="flex gap-6 flex-col md:flex-row">
                 {/* Video Thumbnail */}
@@ -233,18 +233,18 @@ function App() {
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
-                      className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2 bg-gray-600 hover:bg-[#393E46] text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isDownloading ? 'Starting...' : 'Download'}
                     </button>
                     
-                    <button
+                    {/* <button
                       onClick={handleGetVideoInfo}
                       disabled={isLoading}
                       className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors text-sm"
                     >
                       Refresh Info
-                    </button>
+                    </button> */}
                     
                     <select
                       value={selectedFormat}
@@ -263,7 +263,7 @@ function App() {
                     >
                       {videoInfo.availableQualities.map(quality => {
                         const qualityValue = quality.replace('p', '');
-                        console.log(`Rendering quality option: ${quality} -> value: ${qualityValue}`); // Debug log
+                        console.log(`Rendering quality option: ${quality} -> value: ${qualityValue}`); 
                         return (
                           <option key={quality} value={qualityValue}>{quality}</option>
                         );
@@ -272,7 +272,7 @@ function App() {
                   </div>
 
                   {/* Quality Warning */}
-                  {videoInfo.qualityNote && (
+                  {/* {videoInfo.qualityNote && (
                     <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-600/50 rounded text-yellow-200 text-sm">
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -282,7 +282,7 @@ function App() {
                       </div>
                       <p className="mt-1">{videoInfo.qualityNote}</p>
                     </div>
-                  )}
+                  )} */}
 
                   {/* Reset Button */}
                   <div className="mt-4">
