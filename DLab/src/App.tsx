@@ -249,7 +249,7 @@ function App() {
                     <select
                       value={selectedFormat}
                       onChange={(e) => setSelectedFormat(e.target.value as 'mp4' | 'mp3')}
-                      className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
+                      className="pl-1 pr-1 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="mp4">MP4</option>
                       <option value="mp3">MP3</option>
@@ -259,7 +259,7 @@ function App() {
                       <select
                         value={selectedQuality}
                         onChange={(e) => setSelectedQuality(e.target.value)}
-                        className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
+                        className="pl-1 pr-1 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         {videoInfo.availableQualities.map(quality => {
                           const qualityValue = quality.replace('p', '');
