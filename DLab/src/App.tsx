@@ -103,7 +103,8 @@ function App() {
           <div className="flex items-center gap-4">
             <h1 className="text-8xl font-bold text-amber-100" style={{
               marginTop: '3rem',
-              color: '#DFD0B8'
+              color: '#DFD0B8',
+              fontFamily: 'Abril Fatface, serif'
             }}>DLab</h1>
             <img src={dlabLogo} alt="DLab Logo" className="w-24 h-24" style={{
               marginTop: '3rem',
@@ -115,7 +116,10 @@ function App() {
         {/* Subtitle */}
         <div className="text-center mb-8">
           <h2 className="text-2xl text-amber-100 font-light" style={{
-            marginBottom: '4rem'
+            marginBottom: '4rem',
+            fontSize: '1.8rem',
+            fontFamily: 'Alice',
+            color: '#DFD0B8'
           }}>Download Youtube Videos For Free</h2>
         </div>
 
@@ -155,7 +159,11 @@ function App() {
             <button
               onClick={handleGetVideoInfo}
               disabled={isLoading}
-              className="px-8 py-4 bg-gray-700 text-[#DFD0B8] text-lg rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#393E46]"
+              className="px-8 py-4 bg-gray-700 text-[#DFD0B8] text-2xl rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#393E46]"
+              style={{
+              fontFamily: 'Alice',
+              fontSize: '1rem' 
+              }}
             >
               {isLoading ? 'Loading...' : 'Download'}
             </button>
@@ -297,6 +305,7 @@ function App() {
             <p className="text-gray-300 text-lg leading-relaxed mb-6" style={{
               color: '#DFD0B8',
               textAlign: 'left',
+              fontFamily: 'Alice'
             }}>
               In today's fast-paced digital world, offline access to YouTube content is more important 
               than ever. Whether you're catching up on your favorite creators during a commute, 
@@ -306,6 +315,7 @@ function App() {
             <p className="text-gray-300 text-lg leading-relaxed" style={{
               color: '#DFD0B8',
               textAlign: 'left',
+              fontFamily: 'Alice'
             }}>
               DLab makes it easy. Our free, no-frills downloader converts YouTube links into MP4 files in 
               seconds. No sign-ups, no clutter—just a simple way to keep your favorite content accessible 
