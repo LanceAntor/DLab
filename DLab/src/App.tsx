@@ -101,18 +101,26 @@ function App() {
         {/* Header */}
         <div className="flex items-center justify-center mb-8">
           <div className="flex items-center gap-4">
-            <h1 className="text-6xl font-bold text-amber-100">DLab</h1>
-            <img src={dlabLogo} alt="DLab Logo" className="w-16 h-16" />
+            <h1 className="text-8xl font-bold text-amber-100" style={{
+              marginTop: '3rem',
+              color: '#DFD0B8'
+            }}>DLab</h1>
+            <img src={dlabLogo} alt="DLab Logo" className="w-24 h-24" style={{
+              marginTop: '3rem',
+              color: '#DFD0B8'
+            }} />
           </div>
         </div>
 
         {/* Subtitle */}
         <div className="text-center mb-8">
-          <h2 className="text-2xl text-amber-100 font-light">Download Youtube Videos For Free</h2>
+          <h2 className="text-2xl text-amber-100 font-light" style={{
+            marginBottom: '4rem'
+          }}>Download Youtube Videos For Free</h2>
         </div>
 
         {/* Backend Status */}
-        <div className="flex justify-center mb-6">
+        {/* <div className="flex justify-center mb-6">
           <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
             backendStatus === 'online' 
               ? 'bg-green-600 text-white' 
@@ -124,23 +132,30 @@ function App() {
             {backendStatus === 'offline' && '🔴 Backend Offline - Start the backend server'}
             {backendStatus === 'checking' && '🟡 Checking backend...'}
           </div>
-        </div>
+        </div> */}
 
         {/* Input Section */}
-        <div className="flex justify-center mb-8">
-          <div className="flex w-full max-w-2xl">
+        <div className="flex justify-center mb-8" style={{
+          marginBottom: '3.5rem'
+        }}>
+          <div className="flex w-full max-w-4xl">
             <input
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleGetVideoInfo()}
               placeholder="Paste youtube video link here"
-              className="flex-1 px-6 py-4 text-lg bg-gray-600 text-white placeholder-gray-300 rounded-l-lg border-none outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-6 py-4 text-lg bg-gray-600 text-white rounded-l-lg border-none outline-none focus:outline-none"
+              style={{
+                backgroundColor: 'rgba(223, 208, 184, 0.6)', // Reduced opacity
+                color: '#393E46'
+              }}
+              // Remove focus:ring-2 and focus:ring-blue-500 to prevent highlight
             />
             <button
               onClick={handleGetVideoInfo}
               disabled={isLoading}
-              className="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white text-lg rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-4 bg-gray-700 text-[#DFD0B8] text-lg rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#393E46]"
             >
               {isLoading ? 'Loading...' : 'Download'}
             </button>
@@ -279,23 +294,29 @@ function App() {
         {/* Description Section */}
         <div className="max-w-4xl mx-auto text-center">
           <div className="mb-8">
-            <p className="text-gray-300 text-lg leading-relaxed mb-6">
+            <p className="text-gray-300 text-lg leading-relaxed mb-6" style={{
+              color: '#DFD0B8',
+              textAlign: 'left',
+            }}>
               In today's fast-paced digital world, offline access to YouTube content is more important 
               than ever. Whether you're catching up on your favorite creators during a commute, 
               watching music videos without Wi-Fi, or saving tutorials for future reference, having 
               videos at your fingertips—anytime, anywhere—is essential.
             </p>
-            <p className="text-gray-300 text-lg leading-relaxed">
+            <p className="text-gray-300 text-lg leading-relaxed" style={{
+              color: '#DFD0B8',
+              textAlign: 'left',
+            }}>
               DLab makes it easy. Our free, no-frills downloader converts YouTube links into MP4 files in 
               seconds. No sign-ups, no clutter—just a simple way to keep your favorite content accessible 
               whenever you need it.
             </p>
           </div>
 
-          {/* Footer */}
-          <div className="text-gray-500 text-sm">
+            {/* Footer */}
+            <div className="text-gray-500 text-sm mt-16 mb-2 fixed bottom-0 left-0 w-full text-center bg-transparent pointer-events-none select-none">
             Developed By Lance Antor
-          </div>
+            </div>
         </div>
       </div>
     </div>
