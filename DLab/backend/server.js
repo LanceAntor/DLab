@@ -446,7 +446,8 @@ app.post('/api/download-with-progress', async (req, res) => {
       filename: '',
       paused: false,
       stopped: false,
-      startTime: Date.now()
+      startTime: Date.now(),
+      filePaths: [] // Track all files that might need cleanup
     });
     
     // Start download process asynchronously
@@ -498,9 +499,18 @@ app.post('/api/download-stop/:sessionId', (req, res) => {
   session.stopped = true;
   session.status = 'stopped';
   
-  // Clean up session after a short delay
+  // Immediately clean up any partial files
+  cleanupSessionFiles(session, sessionId);
+  
+  // Additional cleanup after a short delay to catch any files that might still be in use
   setTimeout(() => {
+    cleanupSessionFiles(session, sessionId);
     downloadSessions.delete(sessionId);
+  }, 2000);
+  
+  // Final cleanup after a longer delay as a fallback
+  setTimeout(() => {
+    cleanupSessionFiles(session, sessionId);
   }, 5000);
   
   res.json({ sessionId, stopped: true });
@@ -530,6 +540,9 @@ async function startDownloadProcess(sessionId, url, quality, format) {
     session.status = 'downloading';
     
     const filePath = path.join(downloadsDir, filename);
+    session.filePath = filePath;
+    session.filePaths.push(filePath); // Track for cleanup
+    
     const fileStream = fs.createWriteStream(filePath);
     
     let downloadStream;
@@ -620,12 +633,22 @@ async function startDownloadProcess(sessionId, url, quality, format) {
       
       response.on('data', (chunk) => {
         if (session.stopped) {
+          console.log('Download stopped, cleaning up...');
           downloadStream.destroy();
           fileStream.destroy();
-          // Clean up partial file
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          
+          // Clean up partial file immediately
+          setTimeout(() => {
+            if (fs.existsSync(filePath)) {
+              try {
+                fs.unlinkSync(filePath);
+                console.log(`Cleaned up partial file: ${filePath}`);
+              } catch (error) {
+                console.error(`Error cleaning up partial file:`, error);
+              }
+            }
+          }, 100);
+          
           return;
         }
         
@@ -688,6 +711,9 @@ async function downloadAndMergeWithProgress(sessionId, url, videoFormat, audioFo
     
     const videoTempPath = path.join(tempDir, `video_${sessionId}.mp4`);
     const audioTempPath = path.join(tempDir, `audio_${sessionId}.m4a`);
+    
+    // Track temp files for cleanup
+    session.filePaths.push(videoTempPath, audioTempPath, finalPath);
     
     console.log('\n=== STARTING MERGE PROCESS WITH PROGRESS ===');
     
@@ -784,8 +810,22 @@ function downloadStreamWithProgress(sessionId, url, format, outputPath, streamTy
       
       response.on('data', (chunk) => {
         if (session.stopped) {
+          console.log(`${streamType} download stopped, cleaning up...`);
           stream.destroy();
           fileStream.destroy();
+          
+          // Clean up the partial file immediately
+          setTimeout(() => {
+            if (fs.existsSync(outputPath)) {
+              try {
+                fs.unlinkSync(outputPath);
+                console.log(`Cleaned up partial ${streamType} file: ${outputPath}`);
+              } catch (error) {
+                console.error(`Error cleaning up partial ${streamType} file:`, error);
+              }
+            }
+          }, 100);
+          
           reject(new Error('Download stopped'));
           return;
         }
@@ -842,11 +882,33 @@ function downloadStreamWithProgress(sessionId, url, format, outputPath, streamTy
     stream.on('error', (error) => {
       console.error(`${streamType} download error:`, error);
       fileStream.destroy();
+      
+      // Clean up partial file on error
+      if (fs.existsSync(outputPath)) {
+        try {
+          fs.unlinkSync(outputPath);
+          console.log(`Cleaned up partial ${streamType} file after error: ${outputPath}`);
+        } catch (cleanupError) {
+          console.error(`Error cleaning up partial ${streamType} file:`, cleanupError);
+        }
+      }
+      
       reject(error);
     });
     
     fileStream.on('error', (error) => {
       console.error(`${streamType} file stream error:`, error);
+      
+      // Clean up partial file on file stream error
+      if (fs.existsSync(outputPath)) {
+        try {
+          fs.unlinkSync(outputPath);
+          console.log(`Cleaned up partial ${streamType} file after file error: ${outputPath}`);
+        } catch (cleanupError) {
+          console.error(`Error cleaning up partial ${streamType} file:`, cleanupError);
+        }
+      }
+      
       reject(error);
     });
   });
@@ -864,6 +926,101 @@ function cleanupTempFiles(filePaths) {
       }
     }
   });
+}
+
+// Helper function to cleanup all files associated with a session
+function cleanupSessionFiles(session, sessionId) {
+  console.log(`Cleaning up files for stopped session: ${sessionId}`);
+  
+  // Clean up main file path if exists
+  if (session.filePath && fs.existsSync(session.filePath)) {
+    try {
+      fs.unlinkSync(session.filePath);
+      console.log(`Cleaned up main file: ${session.filePath}`);
+    } catch (error) {
+      console.error(`Error cleaning up main file:`, error);
+      // If file is in use, try again later
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(session.filePath)) {
+            fs.unlinkSync(session.filePath);
+            console.log(`Delayed cleanup successful: ${session.filePath}`);
+          }
+        } catch (err) {
+          console.error(`Delayed cleanup failed:`, err);
+        }
+      }, 3000);
+    }
+  }
+  
+  // Clean up tracked file paths
+  if (session.filePaths && session.filePaths.length > 0) {
+    session.filePaths.forEach(filePath => {
+      if (filePath && fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log(`Cleaned up tracked file: ${filePath}`);
+        } catch (error) {
+          console.error(`Error cleaning up tracked file ${filePath}:`, error);
+          // Retry after delay for files that might be in use
+          setTimeout(() => {
+            try {
+              if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`Delayed cleanup successful: ${filePath}`);
+              }
+            } catch (err) {
+              console.error(`Delayed cleanup failed for ${filePath}:`, err);
+            }
+          }, 3000);
+        }
+      }
+    });
+  }
+  
+  // Clean up common temp file patterns for this session
+  const tempDir = path.join(downloadsDir, 'temp');
+  if (fs.existsSync(tempDir)) {
+    const possibleTempFiles = [
+      path.join(tempDir, `video_${sessionId}.mp4`),
+      path.join(tempDir, `audio_${sessionId}.m4a`),
+      path.join(downloadsDir, `${sessionId}_*.mp4`),
+      path.join(downloadsDir, `${sessionId}_*.mp3`)
+    ];
+    
+    possibleTempFiles.forEach(pattern => {
+      // For patterns with wildcards, we need to check if the file exists
+      if (pattern.includes('*')) {
+        // This is a simplified approach - in a real app you might use glob
+        return;
+      }
+      
+      if (fs.existsSync(pattern)) {
+        try {
+          fs.unlinkSync(pattern);
+          console.log(`Cleaned up temp file: ${pattern}`);
+        } catch (error) {
+          console.error(`Error cleaning up temp file ${pattern}:`, error);
+          // Retry after delay
+          setTimeout(() => {
+            try {
+              if (fs.existsSync(pattern)) {
+                fs.unlinkSync(pattern);
+                console.log(`Delayed cleanup successful: ${pattern}`);
+              }
+            } catch (err) {
+              console.error(`Delayed cleanup failed for ${pattern}:`, err);
+            }
+          }, 3000);
+        }
+      }
+    });
+  }
+  
+  // Clear the filePaths array to prevent double cleanup
+  if (session.filePaths) {
+    session.filePaths = [];
+  }
 }
 
 // Helper function to get stream size
