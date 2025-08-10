@@ -693,6 +693,29 @@ async function downloadAndMergeWithProgress(sessionId, url, videoFormat, audioFo
     
     session.status = 'downloading';
     
+    // Initialize tracking for combined download
+    session.videoDownloaded = 0;
+    session.videoTotal = 0;
+    session.audioDownloaded = 0;
+    session.audioTotal = 0;
+    session.downloaded = 0;
+    session.total = 0;
+    
+    // Get stream sizes first
+    console.log('Getting stream sizes...');
+    try {
+      const videoSize = await getStreamSize(url, videoFormat);
+      const audioSize = await getStreamSize(url, audioFormat);
+      
+      session.videoTotal = videoSize;
+      session.audioTotal = audioSize;
+      session.total = videoSize + audioSize;
+      
+      console.log(`Video size: ${videoSize} bytes, Audio size: ${audioSize} bytes, Total: ${session.total} bytes`);
+    } catch (error) {
+      console.log('Could not get stream sizes, proceeding with unknown total:', error.message);
+    }
+    
     // Download video stream with progress tracking
     console.log('1. Downloading video stream...');
     await downloadStreamWithProgress(sessionId, url, videoFormat, videoTempPath, 'video');
@@ -779,21 +802,33 @@ function downloadStreamWithProgress(sessionId, url, format, outputPath, streamTy
         let progressRange = 40;
         let streamProgress = streamTotal > 0 ? (downloaded / streamTotal) * progressRange : 0;
         
-        // Don't override total downloaded bytes, instead show current stream progress
         session.progress = Math.min(Math.round(progressBase + streamProgress), 100);
         
         // Update download info for display
         if (streamType === 'video') {
           session.videoDownloaded = downloaded;
-          session.videoTotal = streamTotal;
+          // Only update total if we don't have it pre-calculated
+          if (session.videoTotal === 0) {
+            session.videoTotal = streamTotal;
+          }
         } else {
           session.audioDownloaded = downloaded;
-          session.audioTotal = streamTotal;
+          // Only update total if we don't have it pre-calculated
+          if (session.audioTotal === 0) {
+            session.audioTotal = streamTotal;
+          }
         }
         
-        // Set display values for current stream
-        session.downloaded = downloaded;
-        session.total = streamTotal;
+        // Calculate combined totals for display
+        const combinedDownloaded = (session.videoDownloaded || 0) + (session.audioDownloaded || 0);
+        const combinedTotal = (session.videoTotal || 0) + (session.audioTotal || 0);
+        
+        // Set display values to show combined progress
+        session.downloaded = combinedDownloaded;
+        // Only update total if we have a better calculation
+        if (combinedTotal > session.total) {
+          session.total = combinedTotal;
+        }
       });
     });
     
@@ -828,6 +863,29 @@ function cleanupTempFiles(filePaths) {
         console.error('Error cleaning up temp file:', cleanupError);
       }
     }
+  });
+}
+
+// Helper function to get stream size
+function getStreamSize(url, format) {
+  return new Promise((resolve, reject) => {
+    const stream = ytdl(url, { format: format });
+    
+    stream.on('response', (response) => {
+      const size = parseInt(response.headers['content-length']) || 0;
+      stream.destroy(); // We only want the size, not the actual data
+      resolve(size);
+    });
+    
+    stream.on('error', (error) => {
+      reject(error);
+    });
+    
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      stream.destroy();
+      reject(new Error('Timeout getting stream size'));
+    }, 10000);
   });
 }
 

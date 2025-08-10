@@ -463,10 +463,7 @@ function App() {
                     {downloadProgress.filename && `File: ${downloadProgress.filename}`}
                   </span>
                   <span className="whitespace-nowrap">
-                    {downloadProgress.status === 'downloading' && downloadProgress.downloaded > 0 && downloadProgress.total > 0 && (
-                      `${formatBytes(downloadProgress.downloaded)} / ${formatBytes(downloadProgress.total)}`
-                    )}
-                    {downloadProgress.status === 'downloading' && downloadProgress.downloaded > 0 && downloadProgress.total === 0 && (
+                    {downloadProgress.status === 'downloading' && downloadProgress.downloaded > 0 && (
                       `Downloaded: ${formatBytes(downloadProgress.downloaded)}`
                     )}
                     {downloadProgress.status === 'merging' && 'Processing final video...'}
