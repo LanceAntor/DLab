@@ -17,6 +17,19 @@ export interface DownloadOptions {
   format: 'mp4' | 'mp3';
 }
 
+export interface DownloadProgress {
+  status: 'starting' | 'fetching_info' | 'downloading' | 'merging' | 'paused' | 'completed' | 'error' | 'stopped';
+  progress: number;
+  downloaded: number;
+  total: number;
+  filename: string;
+  paused: boolean;
+  stopped: boolean;
+  startTime: number;
+  error?: string;
+  filePath?: string;
+}
+
 const API_BASE_URL = 'http://localhost:3001/api';
 
 class YouTubeService {
@@ -134,6 +147,142 @@ class YouTubeService {
         throw error;
       }
       throw new Error('Download failed');
+    }
+  }
+
+  // Start download with progress tracking
+  async startDownloadWithProgress(url: string, options: DownloadOptions): Promise<string> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download-with-progress`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url,
+          quality: options.quality,
+          format: options.format
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start download');
+      }
+
+      const { sessionId } = await response.json();
+      return sessionId;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to start download');
+    }
+  }
+
+  // Get download progress
+  async getDownloadProgress(sessionId: string): Promise<DownloadProgress> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download-progress/${sessionId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get progress');
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to get download progress');
+    }
+  }
+
+  // Pause/Resume download
+  async pauseDownload(sessionId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download-pause/${sessionId}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to pause/resume download');
+      }
+
+      const { paused } = await response.json();
+      return paused;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to pause/resume download');
+    }
+  }
+
+  // Stop download
+  async stopDownload(sessionId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download-stop/${sessionId}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to stop download');
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to stop download');
+    }
+  }
+
+  // Download completed file
+  async downloadCompletedFile(sessionId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/download-file/${sessionId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to download file');
+      }
+
+      // Get filename from response headers
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = 'download';
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/) || 
+                             contentDisposition.match(/filename="([^"]+)"/) ||
+                             contentDisposition.match(/filename=([^;]+)/);
+        if (filenameMatch) {
+          filename = decodeURIComponent(filenameMatch[1]);
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      
+      // Create temporary link for download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to download completed file');
     }
   }
 

@@ -12,6 +12,9 @@ const PORT = 3001;
 // Set FFmpeg path
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
+// Download progress tracking
+const downloadSessions = new Map();
+
 // Middleware
 app.use(cors({
   exposedHeaders: ['Content-Disposition', 'Content-Type', 'Content-Length']
@@ -88,6 +91,55 @@ function mergeVideoAudio(videoPath, audioPath, outputPath) {
       })
       .on('end', () => {
         console.log('FFmpeg merge completed successfully');
+        resolve();
+      })
+      .on('error', (err) => {
+        console.error('FFmpeg error:', err);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+// Helper function to merge video and audio with progress tracking
+function mergeVideoAudioWithProgress(sessionId, videoPath, audioPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    const session = downloadSessions.get(sessionId);
+    if (!session) {
+      reject(new Error('Session not found'));
+      return;
+    }
+    
+    console.log('Starting FFmpeg merge with progress tracking...');
+    console.log('Video:', videoPath);
+    console.log('Audio:', audioPath);
+    console.log('Output:', outputPath);
+    
+    ffmpeg()
+      .input(videoPath)
+      .input(audioPath)
+      .outputOptions([
+        '-c:v copy',  // Copy video stream without re-encoding
+        '-c:a aac',   // Re-encode audio to AAC
+        '-strict experimental'
+      ])
+      .output(outputPath)
+      .on('start', (commandLine) => {
+        console.log('FFmpeg command:', commandLine);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent && !session.stopped) {
+          const mergeProgress = Math.round(progress.percent);
+          console.log(`Merging progress: ${mergeProgress}%`);
+          // Map FFmpeg progress (0-100%) to our progress range (80-100%)
+          session.progress = Math.min(80 + Math.round((mergeProgress / 100) * 20), 100);
+        }
+      })
+      .on('end', () => {
+        console.log('FFmpeg merge completed successfully');
+        if (!session.stopped) {
+          session.progress = 100;
+        }
         resolve();
       })
       .on('error', (err) => {
@@ -367,6 +419,449 @@ app.post('/api/video-info', async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
+});
+
+// Start download with progress tracking
+app.post('/api/download-with-progress', async (req, res) => {
+  try {
+    const { url, quality, format } = req.body;
+    const sessionId = Date.now().toString();
+    
+    console.log(`\n=== DOWNLOAD WITH PROGRESS REQUEST ===`);
+    console.log(`Session ID: ${sessionId}`);
+    console.log(`URL: ${url}`);
+    console.log(`Quality: ${quality}p`);
+    console.log(`Format: ${format}`);
+    
+    if (!url || !ytdl.validateURL(url)) {
+      return res.status(400).json({ error: 'Valid YouTube URL is required' });
+    }
+    
+    // Initialize session
+    downloadSessions.set(sessionId, {
+      status: 'starting',
+      progress: 0,
+      downloaded: 0,
+      total: 0,
+      filename: '',
+      paused: false,
+      stopped: false,
+      startTime: Date.now()
+    });
+    
+    // Start download process asynchronously
+    startDownloadProcess(sessionId, url, quality, format);
+    
+    res.json({ sessionId });
+  } catch (error) {
+    console.error('Download initiation error:', error);
+    res.status(500).json({ error: 'Failed to start download: ' + error.message });
+  }
+});
+
+// Get download progress
+app.get('/api/download-progress/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = downloadSessions.get(sessionId);
+  
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  res.json(session);
+});
+
+// Pause download
+app.post('/api/download-pause/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = downloadSessions.get(sessionId);
+  
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  session.paused = !session.paused;
+  session.status = session.paused ? 'paused' : 'downloading';
+  
+  res.json({ sessionId, paused: session.paused });
+});
+
+// Stop download
+app.post('/api/download-stop/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = downloadSessions.get(sessionId);
+  
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  session.stopped = true;
+  session.status = 'stopped';
+  
+  // Clean up session after a short delay
+  setTimeout(() => {
+    downloadSessions.delete(sessionId);
+  }, 5000);
+  
+  res.json({ sessionId, stopped: true });
+});
+
+// Helper function to start download process
+async function startDownloadProcess(sessionId, url, quality, format) {
+  const session = downloadSessions.get(sessionId);
+  if (!session) return;
+  
+  try {
+    session.status = 'fetching_info';
+    
+    const info = await ytdl.getInfo(url);
+    const videoDetails = info.videoDetails;
+    
+    const sanitizedTitle = sanitizeFilename(videoDetails.title);
+    let filename;
+    
+    if (format === 'mp3') {
+      filename = `${sanitizedTitle}.mp3`;
+    } else {
+      filename = `${sanitizedTitle}_${quality || 'best'}p.mp4`;
+    }
+    
+    session.filename = filename;
+    session.status = 'downloading';
+    
+    const filePath = path.join(downloadsDir, filename);
+    const fileStream = fs.createWriteStream(filePath);
+    
+    let downloadStream;
+    
+    if (format === 'mp3') {
+      downloadStream = ytdl(url, {
+        filter: 'audioonly',
+        quality: 'highestaudio'
+      });
+    } else {
+      // Use the same robust logic as the original download endpoint
+      const allFormats = info.formats || [];
+      const videoAndAudioFormats = ytdl.filterFormats(allFormats, 'videoandaudio');
+      const videoOnlyFormats = ytdl.filterFormats(allFormats, 'videoonly');
+      const audioOnlyFormats = ytdl.filterFormats(allFormats, 'audioonly');
+      
+      console.log(`\n=== FORMAT ANALYSIS FOR ${quality}p ===`);
+      console.log(`Video+Audio formats: ${videoAndAudioFormats.length}`);
+      console.log(`Video-only formats: ${videoOnlyFormats.length}`);
+      console.log(`Audio-only formats: ${audioOnlyFormats.length}`);
+      
+      // Try to find exact quality match in video+audio formats first
+      let selectedVideoFormat = videoAndAudioFormats.find(f => 
+        f.qualityLabel === `${quality}p` || f.height === parseInt(quality)
+      );
+      
+      if (selectedVideoFormat) {
+        console.log(`✅ Found ${quality}p with audio: ${selectedVideoFormat.qualityLabel} (itag: ${selectedVideoFormat.itag})`);
+        downloadStream = ytdl(url, { format: selectedVideoFormat });
+        
+      } else {
+        console.log(`❌ No ${quality}p with audio found. Checking video-only formats...`);
+        
+        // Find video-only format for the requested quality
+        selectedVideoFormat = videoOnlyFormats.find(f => 
+          f.qualityLabel === `${quality}p` || f.height === parseInt(quality)
+        );
+        
+        if (selectedVideoFormat && audioOnlyFormats.length > 0) {
+          console.log(`🔧 Found ${quality}p video-only. Will merge with audio!`);
+          console.log(`Video format: ${selectedVideoFormat.qualityLabel} (itag: ${selectedVideoFormat.itag})`);
+          
+          // Get the best audio format
+          const selectedAudioFormat = audioOnlyFormats.reduce((best, current) => {
+            const currentBitrate = current.audioBitrate || 0;
+            const bestBitrate = best.audioBitrate || 0;
+            return currentBitrate > bestBitrate ? current : best;
+          });
+          
+          console.log(`Audio format: ${selectedAudioFormat.audioBitrate}kbps (itag: ${selectedAudioFormat.itag})`);
+          
+          // For progress tracking downloads, we need to handle merging differently
+          // Let's download and merge, then track the merged file
+          await downloadAndMergeWithProgress(sessionId, url, selectedVideoFormat, selectedAudioFormat, filePath);
+          return; // Exit early as merging is handled separately
+          
+        } else {
+          console.log(`❌ Cannot provide ${quality}p. Falling back to best available quality.`);
+          
+          // Fallback to best video+audio format
+          if (videoAndAudioFormats.length > 0) {
+            const bestFormat = videoAndAudioFormats.reduce((best, current) => {
+              const currentHeight = current.height || 0;
+              const bestHeight = best.height || 0;
+              return currentHeight > bestHeight ? current : best;
+            });
+            
+            console.log(`Using fallback: ${bestFormat.qualityLabel} with audio`);
+            session.filename = `${sanitizedTitle}_${bestFormat.height}p_with_audio.mp4`;
+            filename = session.filename;
+            downloadStream = ytdl(url, { format: bestFormat });
+          } else {
+            console.log('Using highest available quality');
+            downloadStream = ytdl(url, {
+              filter: 'videoandaudio',
+              quality: 'highest'
+            });
+          }
+        }
+      }
+    }
+    
+    let downloaded = 0;
+    
+    downloadStream.on('response', (response) => {
+      const totalSize = parseInt(response.headers['content-length']) || 0;
+      session.total = totalSize;
+      
+      response.on('data', (chunk) => {
+        if (session.stopped) {
+          downloadStream.destroy();
+          fileStream.destroy();
+          // Clean up partial file
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          return;
+        }
+        
+        if (session.paused) {
+          // Simple pause simulation - in a real implementation, you'd need more sophisticated pause/resume
+          return;
+        }
+        
+        downloaded += chunk.length;
+        session.downloaded = downloaded;
+        session.progress = totalSize > 0 ? Math.round((downloaded / totalSize) * 100) : 0;
+      });
+    });
+    
+    downloadStream.pipe(fileStream);
+    
+    downloadStream.on('end', () => {
+      if (!session.stopped) {
+        session.status = 'completed';
+        session.progress = 100;
+        session.filePath = filePath;
+      }
+    });
+    
+    downloadStream.on('error', (error) => {
+      console.error('Download stream error:', error);
+      session.status = 'error';
+      session.error = error.message;
+      
+      // Clean up partial file
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    });
+    
+    fileStream.on('error', (error) => {
+      console.error('File stream error:', error);
+      session.status = 'error';
+      session.error = error.message;
+    });
+    
+  } catch (error) {
+    console.error('Download process error:', error);
+    session.status = 'error';
+    session.error = error.message;
+  }
+}
+
+// Helper function to download and merge video+audio with progress tracking
+async function downloadAndMergeWithProgress(sessionId, url, videoFormat, audioFormat, finalPath) {
+  const session = downloadSessions.get(sessionId);
+  if (!session) return;
+  
+  try {
+    // Create temporary file paths
+    const tempDir = path.join(downloadsDir, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
+    }
+    
+    const videoTempPath = path.join(tempDir, `video_${sessionId}.mp4`);
+    const audioTempPath = path.join(tempDir, `audio_${sessionId}.m4a`);
+    
+    console.log('\n=== STARTING MERGE PROCESS WITH PROGRESS ===');
+    
+    session.status = 'downloading';
+    
+    // Download video stream with progress tracking
+    console.log('1. Downloading video stream...');
+    await downloadStreamWithProgress(sessionId, url, videoFormat, videoTempPath, 'video');
+    
+    if (session.stopped) {
+      cleanupTempFiles([videoTempPath, audioTempPath, finalPath]);
+      return;
+    }
+    
+    // Download audio stream with progress tracking
+    console.log('2. Downloading audio stream...');
+    await downloadStreamWithProgress(sessionId, url, audioFormat, audioTempPath, 'audio');
+    
+    if (session.stopped) {
+      cleanupTempFiles([videoTempPath, audioTempPath, finalPath]);
+      return;
+    }
+    
+    // Merge video and audio
+    console.log('3. Merging video and audio...');
+    session.status = 'merging';
+    session.progress = 80; // Show that we're in final stage (80-100% for merging)
+    
+    await mergeVideoAudioWithProgress(sessionId, videoTempPath, audioTempPath, finalPath);
+    
+    if (!session.stopped) {
+      session.status = 'completed';
+      session.progress = 100;
+      session.filePath = finalPath;
+    }
+    
+    // Cleanup temp files
+    cleanupTempFiles([videoTempPath, audioTempPath]);
+    console.log('✅ Merged download completed successfully!');
+    
+  } catch (error) {
+    console.error('Error in merge process:', error);
+    session.status = 'error';
+    session.error = error.message;
+    
+    // Cleanup on error
+    cleanupTempFiles([videoTempPath, audioTempPath, finalPath]);
+  }
+}
+
+// Helper function to download stream with progress tracking
+function downloadStreamWithProgress(sessionId, url, format, outputPath, streamType) {
+  return new Promise((resolve, reject) => {
+    const session = downloadSessions.get(sessionId);
+    if (!session) {
+      reject(new Error('Session not found'));
+      return;
+    }
+    
+    console.log(`Downloading ${streamType} ${format.qualityLabel || 'stream'} to ${outputPath}`);
+    
+    const stream = ytdl(url, { format: format });
+    const fileStream = fs.createWriteStream(outputPath);
+    
+    let downloaded = 0;
+    let streamTotal = 0;
+    
+    stream.on('response', (response) => {
+      streamTotal = parseInt(response.headers['content-length']) || 0;
+      console.log(`${streamType} stream size: ${streamTotal} bytes`);
+      
+      response.on('data', (chunk) => {
+        if (session.stopped) {
+          stream.destroy();
+          fileStream.destroy();
+          reject(new Error('Download stopped'));
+          return;
+        }
+        
+        if (session.paused) {
+          // Simple pause simulation
+          return;
+        }
+        
+        downloaded += chunk.length;
+        
+        // Update progress (video gets 0-40%, audio gets 40-80%, merge gets 80-100%)
+        let progressBase = streamType === 'video' ? 0 : 40;
+        let progressRange = 40;
+        let streamProgress = streamTotal > 0 ? (downloaded / streamTotal) * progressRange : 0;
+        
+        // Don't override total downloaded bytes, instead show current stream progress
+        session.progress = Math.min(Math.round(progressBase + streamProgress), 100);
+        
+        // Update download info for display
+        if (streamType === 'video') {
+          session.videoDownloaded = downloaded;
+          session.videoTotal = streamTotal;
+        } else {
+          session.audioDownloaded = downloaded;
+          session.audioTotal = streamTotal;
+        }
+        
+        // Set display values for current stream
+        session.downloaded = downloaded;
+        session.total = streamTotal;
+      });
+    });
+    
+    stream.pipe(fileStream);
+    
+    stream.on('end', () => {
+      console.log(`${streamType} download completed: ${outputPath}`);
+      resolve();
+    });
+    
+    stream.on('error', (error) => {
+      console.error(`${streamType} download error:`, error);
+      fileStream.destroy();
+      reject(error);
+    });
+    
+    fileStream.on('error', (error) => {
+      console.error(`${streamType} file stream error:`, error);
+      reject(error);
+    });
+  });
+}
+
+// Helper function to cleanup temp files
+function cleanupTempFiles(filePaths) {
+  filePaths.forEach(tempPath => {
+    if (fs.existsSync(tempPath)) {
+      try {
+        fs.unlinkSync(tempPath);
+        console.log(`Cleaned up: ${tempPath}`);
+      } catch (cleanupError) {
+        console.error('Error cleaning up temp file:', cleanupError);
+      }
+    }
+  });
+}
+
+// Download completed file
+app.get('/api/download-file/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  const session = downloadSessions.get(sessionId);
+  
+  if (!session || session.status !== 'completed' || !session.filePath) {
+    return res.status(404).json({ error: 'File not ready or not found' });
+  }
+  
+  if (!fs.existsSync(session.filePath)) {
+    return res.status(404).json({ error: 'File not found on disk' });
+  }
+  
+  const encodedFilename = encodeURIComponent(session.filename);
+  const dispositionHeader = `attachment; filename="${session.filename}"; filename*=UTF-8''${encodedFilename}`;
+  
+  res.setHeader('Content-Disposition', dispositionHeader);
+  res.setHeader('Content-Type', session.filename.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4');
+  
+  const fileStream = fs.createReadStream(session.filePath);
+  fileStream.pipe(res);
+  
+  fileStream.on('end', () => {
+    // Clean up file after download
+    setTimeout(() => {
+      if (fs.existsSync(session.filePath)) {
+        fs.unlinkSync(session.filePath);
+      }
+      downloadSessions.delete(sessionId);
+    }, 1000);
+  });
 });
 
 // Download video

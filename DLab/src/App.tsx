@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import dlabLogo from './assets/dlab.png'
-import { youtubeService, type VideoInfo, type DownloadOptions } from './services/youtube'
+import { youtubeService, type VideoInfo, type DownloadOptions, type DownloadProgress } from './services/youtube'
 import './App.css'
 
 function App() {
@@ -12,15 +12,122 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  
+  // Progress tracking state
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [progressInterval, setProgressInterval] = useState<number | null>(null)
 
   // Check backend health on component mount
   useEffect(() => {
     checkBackendHealth()
   }, [])
 
+  // Cleanup progress interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
+    }
+  }, [progressInterval])
+
   const checkBackendHealth = async () => {
     const isHealthy = await youtubeService.checkBackendHealth()
     setBackendStatus(isHealthy ? 'online' : 'offline')
+  }
+
+  // Start progress tracking
+  const startProgressTracking = (sessionId: string) => {
+    setCurrentSessionId(sessionId)
+    
+    const interval = setInterval(async () => {
+      try {
+        const progress = await youtubeService.getDownloadProgress(sessionId)
+        setDownloadProgress(progress)
+        
+        if (progress.status === 'completed' || progress.status === 'error' || progress.status === 'stopped') {
+          clearInterval(interval)
+          setProgressInterval(null)
+          setIsDownloading(false)
+          
+          if (progress.status === 'completed') {
+            // Auto-download the completed file
+            setTimeout(async () => {
+              try {
+                await youtubeService.downloadCompletedFile(sessionId)
+                // Clear progress after successful download
+                setTimeout(() => {
+                  setDownloadProgress(null)
+                  setCurrentSessionId(null)
+                }, 3000) // Show success message for 3 seconds
+              } catch (error) {
+                console.error('Error downloading completed file:', error)
+                setError('Failed to download completed file')
+              }
+            }, 1000)
+          } else {
+            // For error or stopped status, clear immediately
+            setTimeout(() => {
+              setDownloadProgress(null)
+              setCurrentSessionId(null)
+            }, 5000) // Show error message for 5 seconds
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error)
+        clearInterval(interval)
+        setProgressInterval(null)
+        setError('Failed to track download progress')
+      }
+    }, 1000)
+    
+    setProgressInterval(interval)
+  }
+
+  // Pause/Resume download
+  const togglePauseDownload = async () => {
+    if (!currentSessionId) return
+    
+    try {
+      const paused = await youtubeService.pauseDownload(currentSessionId)
+      if (downloadProgress) {
+        setDownloadProgress({
+          ...downloadProgress,
+          paused,
+          status: paused ? 'paused' : 'downloading'
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to pause/resume download')
+    }
+  }
+
+  // Stop download
+  const stopDownload = async () => {
+    if (!currentSessionId) return
+    
+    try {
+      await youtubeService.stopDownload(currentSessionId)
+      if (progressInterval) {
+        clearInterval(progressInterval)
+        setProgressInterval(null)
+      }
+      setDownloadProgress(null)
+      setCurrentSessionId(null)
+      setIsDownloading(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop download')
+    }
+  }
+
+  // Format bytes to human readable format
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
   const handleGetVideoInfo = async () => {
@@ -64,6 +171,8 @@ function App() {
     
     setIsDownloading(true)
     setError(null)
+    setDownloadProgress(null)
+    setCurrentSessionId(null)
     
     try {
       const downloadOptions: DownloadOptions = {
@@ -74,14 +183,13 @@ function App() {
       console.log('Download options:', downloadOptions);
       console.log('URL:', url);
       
-      await youtubeService.downloadVideo(url, downloadOptions)
+      // Start download with progress tracking
+      const sessionId = await youtubeService.startDownloadWithProgress(url, downloadOptions)
+      startProgressTracking(sessionId)
       
-      // Show success message
-      alert(`Download started successfully! The file will be saved to your Downloads folder.`)
     } catch (err) {
       console.error('Download error:', err);
       setError(err instanceof Error ? err.message : 'Failed to download video')
-    } finally {
       setIsDownloading(false)
     }
   }
@@ -90,6 +198,20 @@ function App() {
     setUrl('')
     setVideoInfo(null)
     setError(null)
+    
+    // Stop any ongoing download
+    if (currentSessionId) {
+      stopDownload()
+    }
+    
+    // Clear progress tracking
+    if (progressInterval) {
+      clearInterval(progressInterval)
+      setProgressInterval(null)
+    }
+    setDownloadProgress(null)
+    setCurrentSessionId(null)
+    setIsDownloading(false)
   }
 
   return (
@@ -232,10 +354,13 @@ function App() {
                   <div className="flex items-center gap-4 flex-wrap">
                     <button
                       onClick={handleDownload}
-                      disabled={isDownloading}
+                      disabled={isDownloading || Boolean(downloadProgress && downloadProgress.status !== 'completed' && downloadProgress.status !== 'error' && downloadProgress.status !== 'stopped')}
                       className="px-6 py-2 bg-gray-600 hover:bg-[#393E46] text-[#DFD0B8] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isDownloading ? 'Starting...' : 'Download'}
+                      {isDownloading ? 'Starting...' : 
+                       downloadProgress && downloadProgress.status === 'downloading' ? 'Downloading...' :
+                       downloadProgress && downloadProgress.status === 'paused' ? 'Paused' :
+                       'Download'}
                     </button>
                     
                     {/* <button
@@ -294,6 +419,108 @@ function App() {
                       Download another video
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Download Progress Section */}
+        {downloadProgress && (
+          <div className="flex justify-center mb-8" style={{ marginBottom: '2rem' }}>
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl shadow-lg border border-gray-700">
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg text-[#DFD0B8] font-semibold">
+                    {downloadProgress.status === 'starting' && 'Initializing download...'}
+                    {downloadProgress.status === 'fetching_info' && 'Getting video information...'}
+                    {downloadProgress.status === 'downloading' && !downloadProgress.paused && 'Downloading...'}
+                    {downloadProgress.status === 'merging' && 'Merging video and audio...'}
+                    {downloadProgress.status === 'paused' && 'Download paused'}
+                    {downloadProgress.status === 'completed' && 'Download completed!'}
+                    {downloadProgress.status === 'error' && 'Download failed'}
+                    {downloadProgress.status === 'stopped' && 'Download stopped'}
+                  </h3>
+                  <span className="text-[#DFD0B8] text-sm font-mono">
+                    {Math.min(downloadProgress.progress, 100)}%
+                  </span>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="w-full bg-gray-700 rounded-full h-4 mb-4 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-amber-600 to-amber-500 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ 
+                      width: `${Math.min(Math.max(downloadProgress.progress, 0), 100)}%`,
+                      maxWidth: '100%'
+                    }}
+                  ></div>
+                </div>
+                
+                {/* Download Info */}
+                <div className="flex justify-between items-center text-sm text-gray-400 mb-4 flex-wrap gap-2">
+                  <span className="truncate max-w-xs">
+                    {downloadProgress.filename && `File: ${downloadProgress.filename}`}
+                  </span>
+                  <span className="whitespace-nowrap">
+                    {downloadProgress.status === 'downloading' && downloadProgress.downloaded > 0 && downloadProgress.total > 0 && (
+                      `${formatBytes(downloadProgress.downloaded)} / ${formatBytes(downloadProgress.total)}`
+                    )}
+                    {downloadProgress.status === 'downloading' && downloadProgress.downloaded > 0 && downloadProgress.total === 0 && (
+                      `Downloaded: ${formatBytes(downloadProgress.downloaded)}`
+                    )}
+                    {downloadProgress.status === 'merging' && 'Processing final video...'}
+                  </span>
+                </div>
+                
+                {/* Control Buttons */}
+                <div className="flex gap-3">
+                  {(downloadProgress.status === 'downloading' || downloadProgress.status === 'paused') && (
+                    <>
+                      <button
+                        onClick={togglePauseDownload}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded transition-colors"
+                      >
+                        {downloadProgress.paused ? 'Resume' : 'Pause'}
+                      </button>
+                      <button
+                        onClick={stopDownload}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                      >
+                        Stop
+                      </button>
+                    </>
+                  )}
+                  
+                  {downloadProgress.status === 'merging' && (
+                    <div className="text-amber-400 text-sm flex items-center">
+                      <svg className="w-4 h-4 mr-2 animate-spin" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                      </svg>
+                      Merging video and audio... Please wait.
+                    </div>
+                  )}
+                  
+                  {downloadProgress.status === 'completed' && (
+                    <div className="text-green-400 text-sm flex items-center">
+                      <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      File ready for download! Check your Downloads folder.
+                    </div>
+                  )}
+                  
+                  {downloadProgress.status === 'error' && (
+                    <div className="text-red-400 text-sm">
+                      Error: {downloadProgress.error || 'Unknown error occurred'}
+                    </div>
+                  )}
+                  
+                  {downloadProgress.status === 'stopped' && (
+                    <div className="text-yellow-400 text-sm">
+                      Download was stopped by user
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
