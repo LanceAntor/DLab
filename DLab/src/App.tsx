@@ -225,7 +225,7 @@ function App() {
 
                 {/* Video Info */}
                 <div className="flex-1">
-                  <h3 className="text-xl text-white mb-2 line-clamp-2">{videoInfo.title}</h3>
+                  <h3 className="text-xl text-[#DFD0B8] mb-2 line-clamp-2">{videoInfo.title}</h3>
                   <p className="text-gray-400 mb-6">{videoInfo.duration}</p>
 
                   {/* Download Options */}
@@ -233,7 +233,7 @@ function App() {
                     <button
                       onClick={handleDownload}
                       disabled={isDownloading}
-                      className="px-6 py-2 bg-gray-600 hover:bg-[#393E46] text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2 bg-gray-600 hover:bg-[#393E46] text-[#DFD0B8] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isDownloading ? 'Starting...' : 'Download'}
                     </button>
@@ -249,7 +249,7 @@ function App() {
                     <select
                       value={selectedFormat}
                       onChange={(e) => setSelectedFormat(e.target.value as 'mp4' | 'mp3')}
-                      className="px-3 py-2 bg-gray-600 text-white rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="mp4">MP4</option>
                       <option value="mp3">MP3</option>
@@ -258,7 +258,7 @@ function App() {
                     <select
                       value={selectedQuality}
                       onChange={(e) => setSelectedQuality(e.target.value)}
-                      className="px-3 py-2 bg-gray-600 text-white rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-3 py-2 bg-gray-600 text-[#DFD0B8] rounded border-none outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={selectedFormat === 'mp3'}
                     >
                       {videoInfo.availableQualities.map(quality => {
