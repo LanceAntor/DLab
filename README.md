@@ -122,4 +122,4 @@ npm run build
 
 ---
 
-&copy; 2025
+&copy; 2025 DLab. All rights reserved.
