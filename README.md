@@ -1,6 +1,15 @@
 # DLab
 
-DLab is a comprehensive full-stack YouTube downloader application featuring a modern React frontend and robust Node.js backend. Built for seamless video downloading with an intuitive user interface and powerful server-side processing capabilities.
+⚠️ **IMPORTANT LEGAL NOTICE**
+This software is provided for **educational and research purposes only**. Users are solely responsible for:
+- Complying with YouTube's Terms of Service
+- Respecting copyright laws in their jurisdiction
+- Obtaining proper permissions before downloading any content
+- Using this tool only with content they own or have explicit permission to download
+
+**The developers do not condone or encourage copyright infringement.**
+
+DLab is a comprehensive full-stack application demonstrating modern web development techniques with React frontend and Node.js backend.
 
 ## Visual Demo
 
@@ -119,6 +128,13 @@ npm run dev
 # Build for production
 npm run build
 ```
+
+## Legal Compliance
+- **Educational Use Only**: This tool is intended for learning full-stack development
+- **User Responsibility**: Users must comply with all applicable laws and terms of service
+- **No Warranty**: This software is provided "as is" without warranty of any kind
+- **Copyright Respect**: Always obtain proper permissions before downloading content
+
 
 ---
 
