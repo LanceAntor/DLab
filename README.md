@@ -5,11 +5,11 @@ DLab is a comprehensive full-stack YouTube downloader application featuring a mo
 ## Visual Demo
 
 ### Home Screen
-![Home Screen Screenshot](../DLab/DLab/src/assets/screenshots/menu.png)
+![Home Screen Screenshot](DLab/src/assets/screenshots/menu.png)
 *DLab home screen with download options and user interface*
 
 ### Download Interface
-![Download Interface Screenshot](../DLab/DLab/src/assets/screenshots/download.png)
+![Download Interface Screenshot](DLab/src/assets/screenshots/download.png)
 *Active download interface showing progress and options*
 
 ## Features
