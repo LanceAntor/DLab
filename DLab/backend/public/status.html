@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DLab YouTube Downloader Status</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .status-working { background-color: #4CAF50; }
+        .status-limited { background-color: #FF9800; }
+        .status-blocked { background-color: #F44336; }
+        .status-unknown { background-color: #9E9E9E; }
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        .recommendations {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+        .technical-info {
+            background: #e7f3ff;
+            border-left-color: #0066cc;
+        }
+        .blocked-warning {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .refresh-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .refresh-btn:hover {
+            background: #0056b3;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 DLab YouTube Downloader Status</h1>
+            <p>Real-time status of YouTube download functionality</p>
+        </div>
+
+        <div id="status-content">
+            <div class="section">
+                <h3>Loading status...</h3>
+                <p>Please wait while we check the current YouTube download status.</p>
+            </div>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="refresh-btn" onclick="loadStatus()">Refresh Status</button>
+        </div>
+    </div>
+
+    <script>
+        async function loadStatus() {
+            try {
+                const response = await fetch('/api/status-page');
+                const data = await response.json();
+                displayStatus(data);
+            } catch (error) {
+                document.getElementById('status-content').innerHTML = `
+                    <div class="section blocked-warning">
+                        <h3>❌ Unable to load status</h3>
+                        <p>Could not connect to the server. Make sure the DLab backend is running.</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displayStatus(data) {
+            const statusIndicatorClass = `status-${data.currentStatus.level}`;
+            const sectionClass = data.currentStatus.blocked ? 'blocked-warning' : 'section';
+            
+            const html = `
+                <div class="${sectionClass}">
+                    <h3>
+                        <span class="status-indicator ${statusIndicatorClass}"></span>
+                        Current Status: ${data.currentStatus.message}
+                    </h3>
+                    <p><strong>What to expect:</strong> ${data.userGuidance.whatToExpect}</p>
+                    <p><strong>When to retry:</strong> ${data.userGuidance.whenToRetry}</p>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value">${data.statistics.successRate}</div>
+                        <div class="stat-label">Success Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${data.statistics.consecutiveFailures}</div>
+                        <div class="stat-label">Consecutive Failures</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${data.statistics.totalAttempts}</div>
+                        <div class="stat-label">Total Attempts</div>
+                    </div>
+                </div>
+
+                <div class="section recommendations">
+                    <h3>💡 Recommendations</h3>
+                    <ul>
+                        ${data.userGuidance.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+
+                <div class="section technical-info">
+                    <h3>🔧 Technical Information</h3>
+                    <p><strong>Affected systems:</strong> ${data.technicalInfo.affectedLibraries}</p>
+                    <p><strong>Root cause:</strong> ${data.technicalInfo.cause}</p>
+                    <p><strong>Is this permanent?</strong> ${data.technicalInfo.isTemporary ? 'No - this is temporary' : 'Unknown'}</p>
+                    
+                    <h4>Alternative Solutions:</h4>
+                    <ul>
+                        ${data.technicalInfo.alternativeSolutions.map(alt => `<li>${alt}</li>`).join('')}
+                    </ul>
+                </div>
+
+                <div class="section">
+                    <h3>📊 Additional Information</h3>
+                    <p><strong>Last update:</strong> ${data.lastUpdated}</p>
+                    <p><strong>Time since last success:</strong> ${data.statistics.timeMessage}</p>
+                </div>
+            `;
+            
+            document.getElementById('status-content').innerHTML = html;
+        }
+
+        // Load status when page loads
+        loadStatus();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+</html>
